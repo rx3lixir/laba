@@ -1,0 +1,21 @@
+general_params:
+  env: dev
+  secret_key: 36080001349340267925113477454910
+user_db_params:
+  db_username: laba_admin
+  db_password: 12345
+  db_name: user-db
+  db_port: 5432
+  db_host: localhost
+  db_timeout: 5
+messages_db_params:
+  db_username: laba_admin
+  db_password: 12345
+  db_name: messages-db
+  db_port: 5433
+  db_host: localhost
+  db_timeout: 5
+auth_db_params:
+  db_host: localhost
+  db_username: laba_admin
+  db_password: 12345
