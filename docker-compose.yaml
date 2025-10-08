@@ -21,7 +21,7 @@ services:
       - POSTGRES_DB=message-db
       - PGPORT=5433
     ports:
-      - "5433:5433"
+      - "5433:5432"
     volumes:
       - message-db-data:/var/lib/postgresql/data
     restart: unless-stopped
