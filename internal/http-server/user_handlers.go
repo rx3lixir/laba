@@ -3,7 +3,9 @@ package httpserver
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
+	"github.com/rx3lixir/laba/internal/db"
 	"github.com/rx3lixir/laba/pkg/password"
 )
 
@@ -27,11 +29,13 @@ func handleHello(w http.ResponseWriter, r *http.Request) error {
 	return WriteJSON(w, http.StatusOK, response)
 }
 
-func handleAddUser(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) HandleAddUser(w http.ResponseWriter, r *http.Request) error {
 	req := new(CreateUserRequest)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return NewValidationError("Invalid JSON format: " + err.Error())
 	}
+
+	s.log.Info("recieved request", "handler", "HandleAddUser", "request", req)
 
 	if err := validateCreateUserRequest(req); err != nil {
 		return nil
@@ -41,5 +45,13 @@ func handleAddUser(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+
+	newUser := &db.User{
+		Name:     req.Name,
+		Email:    strings.ToLower(strings.TrimSpace(req.Email)),
+		Password: string(hashedPassword),
+	}
+
+	s.userStorer.CreateUser(s.ctx, s.userStorer)
 
 }

@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -12,6 +13,7 @@ type Server struct {
 	userStorer db.UserStore
 	log        *log.Logger
 	httpServer *http.Server
+	ctx        context.Context
 }
 
 func New(addr string, userStorer *db.UserStore, log *log.Logger) *Server {
