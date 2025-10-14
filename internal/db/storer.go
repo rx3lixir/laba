@@ -28,11 +28,6 @@ func NewPostgresStore(pool DBTX) *PostgresStore {
 
 type UserStore interface {
 	CreateUser(ctx context.Context, user *User) error
-	UpdateUser(ctx context.Context, user *User) error
-	GetUsers(ctx context.Context) ([]*User, error)
-	GetUserByID(ctx context.Context, id int) (*User, error)
-	GetUserByEmail(ctx context.Context, email string) (*User, error)
-	DeleteUser(ctx context.Context, id int) error
 }
 
 func CreatePostgresPool(parentCtx context.Context, dburl string) (*pgxpool.Pool, error) {

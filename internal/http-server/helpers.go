@@ -3,7 +3,6 @@ package httpserver
 import (
 	"encoding/json"
 	"errors"
-	"log"
 	"net/http"
 	"strings"
 )
@@ -13,78 +12,71 @@ type APIError struct {
 	Error string `json:"error"`
 }
 
-// WriteJSON sends data as JSON with the specified HTTP status code.
-// Automatically sets the correct Content-Type header.
-func WriteJSON(w http.ResponseWriter, statusCode int, data any) error {
+// respondJSON sends a JSON response with the given status code
+func (s *Server) respondJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
+	w.WriteHeader(status)
 
-	// For 204 No Content or 202 Accepted with no data, don't encode anything
-	if data == nil && (statusCode == http.StatusNoContent || statusCode == http.StatusAccepted) {
-		return nil
-	}
-	// If data is nil for other status codes, send an empty object
-	if data == nil && statusCode != http.StatusNoContent && statusCode != http.StatusAccepted {
-		data = map[string]any{}
-	}
-
-	return json.NewEncoder(w).Encode(data)
-}
-
-// apiFunc defines the signature for API handler functions
-// that return an error for centralized error handling
-type apiFunc func(w http.ResponseWriter, r *http.Request) error
-
-// makeHTTPHandlerFunc converts an apiFunc to a standard http.HandlerFunc,
-// adding unified error handling
-func makeHTTPHandlerFunc(f apiFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if err := f(w, r); err != nil {
-			handleError(w, r, err)
+	if data != nil {
+		if err := json.NewEncoder(w).Encode(data); err != nil {
+			s.log.Error("Failed to encode JSON response", "error", err)
 		}
 	}
 }
 
-// handleError processes errors and sends appropriate HTTP responses
-func handleError(w http.ResponseWriter, r *http.Request, err error) {
+// respondError sends an error response with appropriate status code
+func (s *Server) respondError(w http.ResponseWriter, status int, message string) {
+	s.respondJSON(w, status, map[string]string{
+		"error": message,
+	})
+}
+
+// handleError processes an error and sends the appropriate HTTP response
+// This centralizes your error handling logic
+func (s *Server) handleError(w http.ResponseWriter, err error) {
+	// Check for custom error types
 	var validationErr *ValidationErr
 	if errors.As(err, &validationErr) {
-		WriteJSON(w, http.StatusBadRequest, APIError{Error: validationErr.Error()})
+		s.respondError(w, http.StatusBadRequest, validationErr.Error())
 		return
 	}
 
 	var notFoundErr *NotFoundErr
 	if errors.As(err, &notFoundErr) {
-		WriteJSON(w, http.StatusNotFound, APIError{Error: notFoundErr.Error()})
+		s.respondError(w, http.StatusNotFound, notFoundErr.Error())
 		return
 	}
 
-	var unaouthorizedErr *UnaouthorizedError
-	if errors.As(err, &unaouthorizedErr) {
-		WriteJSON(w, http.StatusUnauthorized, APIError{Error: unaouthorizedErr.Error()})
-	}
-
-	errString := strings.ToLower(err.Error())
-
-	if strings.Contains(errString, "required") ||
-		strings.Contains(errString, "invalid") ||
-		strings.Contains(errString, "format") {
-		WriteJSON(w, http.StatusBadRequest, APIError{Error: err.Error()})
+	var unauthorizedErr *UnaouthorizedError
+	if errors.As(err, &unauthorizedErr) {
+		s.respondError(w, http.StatusUnauthorized, unauthorizedErr.Error())
 		return
 	}
 
-	if strings.Contains(errString, "unaouthorized") ||
-		strings.Contains(errString, "unauthenticated") {
-		WriteJSON(w, http.StatusUnauthorized, APIError{Error: "Unaouthorized"})
-	}
+	// Check error message for common patterns
+	errMsg := strings.ToLower(err.Error())
 
-	if strings.Contains(errString, "not found") {
-		WriteJSON(w, http.StatusNotFound, APIError{Error: err.Error()})
+	if strings.Contains(errMsg, "required") ||
+		strings.Contains(errMsg, "invalid") ||
+		strings.Contains(errMsg, "format") {
+		s.respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	log.Printf("HTTP handler error", "error", err, "path", r.URL.Path)
-	WriteJSON(w, http.StatusInternalServerError, APIError{Error: "An unexpected error occurred"})
+	if strings.Contains(errMsg, "not found") {
+		s.respondError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	if strings.Contains(errMsg, "unauthorized") ||
+		strings.Contains(errMsg, "unauthenticated") {
+		s.respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	// Default to 500 for unknown errors
+	s.log.Error("Internal server error", "error", err)
+	s.respondError(w, http.StatusInternalServerError, "An unexpected error occurred")
 }
 
 type ValidationErr struct {

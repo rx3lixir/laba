@@ -5,25 +5,25 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-func setupRoutes() *chi.Mux {
+func (s *Server) setupRoutes() *chi.Mux {
 	r := chi.NewRouter()
 
+	// Middleware block
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Compress(5))
 
-	r.Mount("/api", apiRoutes())
+	// API routes
+	r.Route("/api", func(r chi.Router) {
+		// Say hi
+		r.Get("/hello", s.HandleHello)
 
-	return r
-}
-
-func apiRoutes() *chi.Mux {
-	r := chi.NewRouter()
-
-	r.Get("/hello", makeHTTPHandlerFunc(handleHello))
-
-	r.Post("/adduser", makeHTTPHandlerFunc(handleAddUser))
+		// User routes
+		r.Route("/users", func(r chi.Router) {
+			r.Post("/", s.HandleAddUser)
+		})
+	})
 
 	return r
 }
