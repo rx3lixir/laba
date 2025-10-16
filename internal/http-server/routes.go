@@ -20,7 +20,7 @@ func (s *Server) setupRoutes() *chi.Mux {
 		r.Get("/hello", s.HandleHello)
 
 		// User routes
-		r.Route("/users", func(r chi.Router) {
+		r.Route("/user", func(r chi.Router) {
 			r.Post("/", s.HandleAddUser)
 		})
 	})

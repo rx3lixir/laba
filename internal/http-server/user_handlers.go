@@ -38,7 +38,7 @@ func (s *Server) HandleAddUser(w http.ResponseWriter, r *http.Request) {
 
 	// Request validation
 	if err := validateCreateUserRequest(req); err != nil {
-		s.respondError(w, http.StatusBadRequest, "User is invalid")
+		s.respondError(w, http.StatusBadRequest, err.Error())
 
 		log.Error(
 			"User is invalid",
@@ -81,7 +81,7 @@ func (s *Server) HandleAddUser(w http.ResponseWriter, r *http.Request) {
 		ID:        newUser.ID,
 		Name:      newUser.Name,
 		Email:     newUser.Email,
-		CreatedAt: newUser.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		CreatedAt: newUser.CreatedAt,
 	}
 
 	s.log.Info(

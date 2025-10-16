@@ -1,16 +1,16 @@
 services:
   user-db:
     image: postgres:18-alpine
-    container_name: user-db
+    container_name: laba-main-db-container
     environment:
-      - POSTGRES_USER=admin
+      - POSTGRES_USER=laba_admin
       - POSTGRES_PASSWORD=12345
-      - POSTGRES_DB=user-db
+      - POSTGRES_DB=laba_main_db
       - PGPORT=5432
     ports:
       - "5432:5432"
     volumes:
-      - user-db-data:/var/lib/postgresql/data
+      - main-db-data:/var/lib/postgresql/data
     restart: unless-stopped
   auth-db:
     image: redis:7.2-alpine
@@ -19,8 +19,8 @@ services:
       - "6379:6379"
     volumes:
       - auth-db-data:/data
-    command: redis-server --appendonly yes --requirepass ""
+    command: redis-server --appendonly yes --requirepass "12345"
     restart: unless-stopped
 volumes:
-  user-db-data:
+  main-db-data:
   auth-db-data:

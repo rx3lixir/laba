@@ -40,32 +40,34 @@ func main() {
 	logger.Info(
 		"Configuration loaded",
 		"env", c.GeneralParams.Env,
-		"user-db", c.UserDBParams.Name,
-		"message-db", c.MessageDBParams.Name,
+		"database", c.MainDBParams.Name,
+		"auth", c.AuthDBParams.Host,
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Creating database connection pool
-	pool, err := db.CreatePostgresPool(ctx, c.UserDBParams.GetDSN())
+	pool, err := db.CreatePostgresPool(ctx, c.MainDBParams.GetDSN())
 	if err != nil {
 		logger.Error(
 			"Failed to create postgres pool",
 			"error", err,
-			"db", c.UserDBParams.Name,
+			"db", c.MainDBParams.Name,
 		)
 		os.Exit(1)
 	}
 	defer pool.Close()
 
-	logger.Info("Database connection established", "db", c.UserDBParams.Name)
+	logger.Info("Database connection established",
+		"db", c.MainDBParams.GetDSN(),
+	)
 
 	// Creates database store
 	userStore := db.NewPostgresStore(pool)
 
 	// Creates HTTP server
-	HTTPserver := httpserver.New(":8080", userStore, logger)
+	HTTPserver := httpserver.New(c.GeneralParams.HTTPaddress, userStore, logger)
 
 	// Channel to listen for errors coming from the server
 	serverErrors := make(chan error, 1)

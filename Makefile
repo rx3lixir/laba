@@ -2,9 +2,19 @@
 # CONFIGURATION
 # ============================================================================
 
+# Binary name for compilation
 BINARY_NAME=laba
+
+# Database connection parameters for migrations tool
+MIGRATIONS_HOST=localhost
+MIGRATIONS_PORT=5432
+MIGRATIONS_USER=laba_admin
+MIGRATIONS_PASSWORD=12345
+MIGRATIONS_DBNAME=laba_main_db
+MIGRATIONS_DRIVER=postgres
+
+# Path where migrations lay
 MIGRATIONS_PATH=internal/db/migrations
-DB_URL=postgres://rx3lixir:password@localhost:5432/laba-storer?sslmode=disable
 
 # Auto-load .env file if it exists
 ifneq (,$(wildcard .env))
@@ -23,15 +33,15 @@ all: build ## Default build command
 # ============================================================================
 
 build: ## Build the binary
-	@echo "🔨 Building..."
+	@echo "Building..."
 	go build -o ./bin/$(BINARY_NAME) ./cmd/laba/main.go
 
 run: build ## Build and run the app
-	@echo "🚀 Running..."
+	@echo "Running..."
 	./bin/$(BINARY_NAME)
 
 clean: ## Clean binary
-	@echo "🧹 Cleaning..."
+	@echo "Cleaning..."
 	go clean
 	rm -f ./bin/$(BINARY_NAME)
 
@@ -40,49 +50,47 @@ clean: ## Clean binary
 # ============================================================================
 
 test: ## Run all tests with coverage
-	@echo "🧪 Running tests..."
+	@echo "Running tests..."
 	go test -cover ./...
 
 # ============================================================================
-# MIGRATIONS (using migrate/migrate docker image)
+# MIGRATIONS (using golang goose tool)
 # ============================================================================
 
-migrate-new: ## Create a new migration: make migrate-new name=create_users
-ifndef name
-	$(error ❌ name is not set. Usage: make migrate-new name=your_migration_name)
-endif
-	@echo "🧬 Creating new migration '$(name)'..."
-	docker run --rm -v $(shell pwd)/$(MIGRATIONS_PATH):/migrations \
-		migrate/migrate create -ext sql -dir /migrations $(name)
+migrate-status: ## Checking migrations status
+	goose -dir $(MIGRATIONS_PATH) $(MIGRATIONS_DRIVER) \
+		"host=$(MIGRATIONS_HOST) port=$(MIGRATIONS_PORT) \
+		user=$(MIGRATIONS_USER) password=$(MIGRATIONS_PASSWORD) \
+		dbname=$(MIGRATIONS_DBNAME) sslmode=disable" \
+		status	
 
-migrate-up: ## Apply all migrations
-	@echo "📥 Applying all migrations..."
-	docker run --rm -v $(shell pwd)/$(MIGRATIONS_PATH):/migrations \
-		--network host migrate/migrate \
-		-path=/migrations -database "$(DB_URL)" up
+migrate-up: ## Applying freshly written migrations
+	goose -dir $(MIGRATIONS_PATH) $(MIGRATIONS_DRIVER) \
+		"host=$(MIGRATIONS_HOST) port=$(MIGRATIONS_PORT) \
+		user=$(MIGRATIONS_USER) password=$(MIGRATIONS_PASSWORD) \
+		dbname=$(MIGRATIONS_DBNAME) sslmode=disable" \
+		up
+			
+migrate-down: ## Denying freshly written migrations
+	goose -dir $(MIGRATIONS_PATH) $(MIGRATIONS_DRIVER) \
+		"host=$(MIGRATIONS_HOST) port=$(MIGRATIONS_PORT) \
+		user=$(MIGRATIONS_USER) password=$(MIGRATIONS_PASSWORD) \
+		dbname=$(MIGRATIONS_DBNAME) sslmode=disable" \
+		down	
 
-migrate-down: ## Rollback one migration
-	@echo "📤 Rolling back one migration..."
-	docker run --rm -v $(shell pwd)/$(MIGRATIONS_PATH):/migrations \
-		--network host migrate/migrate \
-		-path=/migrations -database "$(DB_URL)" down 1
-
-migrate-force-down-all: ## Rollback all migrations (dangerous!)
-	@echo "⚠️ Force dropping all migrations!"
-	docker run --rm -v $(shell pwd)/$(MIGRATIONS_PATH):/migrations \
-		--network host migrate/migrate \
-		-path=/migrations -database "$(DB_URL)" drop -f
-
-migrate-status: ## Get current DB version
-	@echo "🔍 Current migration version:"
-	docker run --rm --network host \
-		migrate/migrate -path=$(shell pwd)/$(MIGRATIONS_PATH) -database "$(DB_URL)" version || true
+migrate-create: ## Creating a new pair of migrations 
+	@read -p "Enter migration name: " name; \
+	goose -dir $(MIGRATIONS_PATH) $(MIGRATIONS_DRIVER) \
+		"host=$(MIGRATIONS_HOST) port=$(MIGRATIONS_PORT) \
+		user=$(MIGRATIONS_USER) password=$(MIGRATIONS_PASSWORD) \
+		dbname=$(MIGRATIONS_DBNAME) sslmode=disable" \
+		create $$name sql	
 
 # ============================================================================
 # UTILITIES
 # ============================================================================
 
 help: ## Show help
-	@echo "📖 Available commands:"
+	@echo "Available commands:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-25s\033[0m %s\n", $$1, $$2}'
