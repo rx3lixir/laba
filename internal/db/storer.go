@@ -4,22 +4,40 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-
-	sqlc "github.com/rx3lixir/laba/internal/db/sqlc"
 )
 
-// PostgresStore embeds the sqlc Queries
-type PostgresStore struct {
-	queries *sqlc.Queries
-	pool    *pgxpool.Pool
+// DBTX is an interface for database operations
+// it allows to swap between pool and transactions
+type DBTX interface {
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// NewPostgresStore creates a new store with the connection pool
-func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore {
+// UserStore defines all user-related database operations
+// It should be passed into handlers
+type UserStore interface {
+	CreateUser(ctx context.Context, user *User) error
+	GetUserByID(ctx context.Context, id uuid.UUID) (*User, error)
+	GetUserByEmail(ctx context.Context, email string) (*User, error)
+	GetUsers(ctx context.Context, limit, offset int) ([]*User, error)
+	UpdateUser(ctx context.Context, user *User) error
+	DeleteUser(ctx context.Context, id uuid.UUID) error
+}
+
+// PostgresStore is a main database store
+type PostgresStore struct {
+	db DBTX
+}
+
+// NewPostgresStore creates a new store
+func NewPostgresStore(db DBTX) *PostgresStore {
 	return &PostgresStore{
-		queries: sqlc.New(pool),
-		pool:    pool,
+		db: db,
 	}
 }
 

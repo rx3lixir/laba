@@ -64,10 +64,10 @@ func main() {
 	)
 
 	// Creates database store
-	userStore := db.NewPostgresStore(pool)
+	store := db.NewPostgresStore(pool)
 
 	// Creates HTTP server
-	HTTPserver := httpserver.New(c.GeneralParams.HTTPaddress, userStore, logger)
+	HTTPserver := httpserver.New(c.GeneralParams.HTTPaddress, store, logger)
 
 	// Channel to listen for errors coming from the server
 	serverErrors := make(chan error, 1)

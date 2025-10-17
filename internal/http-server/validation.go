@@ -2,21 +2,19 @@ package httpserver
 
 import (
 	"strings"
-
-	"github.com/charmbracelet/log"
 )
 
-func validateCreateUserRequest(req *CreateUserRequest, log *log.Logger) error {
-	if req.Name == "" {
-		return NewValidationError("Name is required")
+func validateCreateUserRequest(req *CreateUserRequest) error {
+	if req.Username == "" {
+		return NewValidationError("Username is required")
 	}
 
-	if len(req.Name) < 2 {
-		return NewValidationError("Name must be at least 2 characters long")
+	if len(req.Username) < 2 {
+		return NewValidationError("Username must be at least 2 characters long")
 	}
 
-	if len(req.Name) > 28 {
-		return NewValidationError("Name must be not more that 28 characters long")
+	if len(req.Username) > 28 {
+		return NewValidationError("Username must be not more that 28 characters long")
 	}
 
 	if req.Email == "" {

@@ -21,7 +21,7 @@ func (s *Server) setupRoutes() *chi.Mux {
 
 		// User routes
 		r.Route("/user", func(r chi.Router) {
-			r.Post("/", s.HandleAddUser)
+			r.Post("/", s.HandleCreateUser)
 		})
 	})
 
