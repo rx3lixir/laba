@@ -21,10 +21,11 @@ func (s *Server) setupRoutes() *chi.Mux {
 
 		// User routes
 		r.Route("/user", func(r chi.Router) {
+			r.Get("/", s.HandleGetAllUsers)
+			r.Get("/email/{email}", s.HandleGetUserByEmail)
+			r.Get("/{id}", s.HandleGetUserByID)
 			r.Post("/", s.HandleCreateUser)
-
-			r.Get("/", s.HandleGetUserByEmail)
-			r.Get("/id", s.HandleGetUserByID)
+			r.Delete("/{id}", s.HandleDeleteUser)
 		})
 	})
 
