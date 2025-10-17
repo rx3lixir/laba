@@ -7,23 +7,22 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
-	"github.com/rx3lixir/laba/internal/db"
+	"github.com/rx3lixir/laba/internal/db/sqlc"
 )
 
 type Server struct {
-	userStorer db.UserStore
+	userStorer db.Querier
 	log        *log.Logger
 	httpServer *http.Server
 	ctx        context.Context
 }
 
-func New(addr string, userStorer db.UserStore, logger *log.Logger) *Server {
+func New(addr string, userStorer db.Querier, logger *log.Logger) *Server {
 	s := &Server{
 		userStorer: userStorer,
 		log:        logger,
 	}
 
-	// Setup routes with server instance
 	router := s.setupRoutes()
 
 	s.httpServer = &http.Server{

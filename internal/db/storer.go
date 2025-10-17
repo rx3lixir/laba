@@ -4,32 +4,26 @@ import (
 	"context"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	sqlc "github.com/rx3lixir/laba/internal/db/sqlc"
 )
 
-// To abstract db methods from pgxpool api
-type DBTX interface {
-	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
-	Query(ctx context.Context, sql string, argumesnts ...any) (pgx.Rows, error)
-	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
-}
-
+// PostgresStore embeds the sqlc Queries
 type PostgresStore struct {
-	db DBTX
+	queries *sqlc.Queries
+	pool    *pgxpool.Pool
 }
 
-func NewPostgresStore(pool DBTX) *PostgresStore {
+// NewPostgresStore creates a new store with the connection pool
+func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore {
 	return &PostgresStore{
-		db: pool,
+		queries: sqlc.New(pool),
+		pool:    pool,
 	}
 }
 
-type UserStore interface {
-	CreateUser(ctx context.Context, user *User) error
-}
-
+// CreatePostgresPool creates and pings a connection pool
 func CreatePostgresPool(parentCtx context.Context, dburl string) (*pgxpool.Pool, error) {
 	ctx, cancel := context.WithTimeout(parentCtx, time.Second*3)
 	defer cancel()

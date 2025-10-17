@@ -2,9 +2,11 @@ package httpserver
 
 import (
 	"strings"
+
+	"github.com/charmbracelet/log"
 )
 
-func validateCreateUserRequest(req *CreateUserRequest) error {
+func validateCreateUserRequest(req *CreateUserRequest, log *log.Logger) error {
 	if req.Name == "" {
 		return NewValidationError("Name is required")
 	}

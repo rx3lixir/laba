@@ -1,6 +1,10 @@
 package httpserver
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type CreateUserRequest struct {
 	Name     string `json:"name"`
@@ -9,7 +13,7 @@ type CreateUserRequest struct {
 }
 
 type CreateUserResponse struct {
-	ID        int       `json:"id"`
+	ID        uuid.UUID `json:"id"`
 	Name      string    `json:"name"`
 	Email     string    `json:"email"`
 	CreatedAt time.Time `json:"created_at"`

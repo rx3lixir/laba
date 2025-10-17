@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/log"
-	"github.com/rx3lixir/laba/internal/db"
+	"github.com/rx3lixir/laba/internal/db/sqlc"
 	"github.com/rx3lixir/laba/pkg/password"
 )
 
@@ -21,6 +21,7 @@ func (s *Server) HandleHello(w http.ResponseWriter, r *http.Request) {
 	s.respondJSON(w, http.StatusOK, response)
 }
 
+// Handles adding user to
 func (s *Server) HandleAddUser(w http.ResponseWriter, r *http.Request) {
 	req := new(CreateUserRequest)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -64,24 +65,13 @@ func (s *Server) HandleAddUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Saving user to database
-	if err := s.userStorer.CreateUser(r.Context(), newUser); err != nil {
-		s.log.Error(
-			"Failed to create user",
-			"user_email",
-			newUser.Email,
-			"error",
-			err,
-		)
-		s.respondError(w, http.StatusInternalServerError, "Failed to create user")
-		return
-	}
 
 	// Building a response
 	response := CreateUserResponse{
 		ID:        newUser.ID,
 		Name:      newUser.Name,
 		Email:     newUser.Email,
-		CreatedAt: newUser.CreatedAt,
+		CreatedAt: newUser.CreatedAt.Time,
 	}
 
 	s.log.Info(
