@@ -68,7 +68,7 @@ func (s *PostgresStore) GetUserByID(ctx context.Context, id uuid.UUID) (*User, e
 // GetUserByEmail retrieves a user by email
 func (s *PostgresStore) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	query := `
-		SELECT id, username, password, created_at, updated_at
+		SELECT id, username, email, password, created_at, updated_at
 		FROM users
 		WHERE email = $1
 	`
@@ -137,7 +137,7 @@ func (s *PostgresStore) UpdateUser(ctx context.Context, user *User) error {
 		SET username = $2, email = $3, updated_at = $4
 		WHERE id = $1
 	`
-	user.UpdatedAt = ctx.Value("now").(time.Time)
+	user.UpdatedAt = time.Now()
 
 	result, err := s.db.Exec(ctx, query,
 		user.ID,

@@ -80,8 +80,82 @@ func (s *Server) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
 	s.log.Info(
 		"User created successfully",
 		"user_email", newUser.Email,
-		"user_id", newUser.Email,
+		"user_id", newUser.ID,
 	)
 
 	s.respondJSON(w, http.StatusCreated, response)
+}
+
+// Handles getting user using it's ID
+func (s *Server) HandleGetUserByID(w http.ResponseWriter, r *http.Request) {
+	req := new(GetUserByIDRequest)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, http.StatusBadRequest, "Invalid JSON format")
+		return
+	}
+
+	s.log.Info("Received request",
+		"email", req.Email,
+		"id", req.ID,
+	)
+
+	// Getting user from database
+	user, err := s.userStore.GetUserByID(r.Context(), req.ID)
+	if err != nil {
+		s.handleError(w, err)
+		return
+	}
+
+	// Building a response
+	response := GetUserByIDResponse{
+		ID:        user.ID,
+		Username:  user.Username,
+		Email:     user.Email,
+		Password:  user.Password,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+	}
+
+	s.log.Info(
+		"User created successfully",
+		"user_email", user.Email,
+		"user_id", user.ID,
+	)
+
+	// Writing a response
+	s.respondJSON(w, http.StatusOK, response)
+}
+
+// Handles getting user by it's email
+func (s *Server) HandleGetUserByEmail(w http.ResponseWriter, r *http.Request) {
+	req := new(GetUserByEmailRequest)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, http.StatusBadRequest, "Invalid json format")
+		return
+	}
+
+	s.log.Info("Recieved request",
+		"email", req.Email,
+		"username", req.Username,
+	)
+
+	// Getting user from database
+	user, err := s.userStore.GetUserByEmail(r.Context(), req.Email)
+	if err != nil {
+		s.handleError(w, err)
+		return
+	}
+
+	// Building a response
+	response := GetUserByEmailResponse{
+		ID:        user.ID,
+		Username:  user.Username,
+		Email:     user.Email,
+		Password:  user.Password,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+	}
+
+	// Writing a response
+	s.respondJSON(w, http.StatusOK, response)
 }
