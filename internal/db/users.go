@@ -32,6 +32,9 @@ func (s *PostgresStore) CreateUser(ctx context.Context, user *User) error {
 	)
 
 	if err != nil {
+		if ctx.Err() != nil {
+			return fmt.Errorf("operation cancelled: %w", ctx.Err())
+		}
 		return fmt.Errorf("failed to create user: %w", err)
 	}
 

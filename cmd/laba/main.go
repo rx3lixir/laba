@@ -22,6 +22,10 @@ func main() {
 		Level:           log.DebugLevel,
 	})
 
+	// Initializing global context instance
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Initializing config manager
 	cm, err := config.NewConfigManager("internal/config/config.yaml")
 	if err != nil {
@@ -43,9 +47,6 @@ func main() {
 		"database", c.MainDBParams.Name,
 		"auth", c.AuthDBParams.Host,
 	)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	// Creating database connection pool
 	pool, err := db.CreatePostgresPool(ctx, c.MainDBParams.GetDSN())

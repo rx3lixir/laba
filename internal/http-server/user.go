@@ -95,6 +95,7 @@ func (s *Server) HandleGetUserByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.log.Info("Received request",
+		"handler", "HandleGetUserByID",
 		"email", req.Email,
 		"id", req.ID,
 	)
@@ -126,6 +127,33 @@ func (s *Server) HandleGetUserByID(w http.ResponseWriter, r *http.Request) {
 	s.respondJSON(w, http.StatusOK, response)
 }
 
+func (s *Server) HandleGetAllUsers(w http.ResponseWriter, r *http.Request) {
+	req := new([]GetAllUsersRequest)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, http.StatusBadRequest, "Invalid json format")
+		return
+	}
+
+	s.log.Info("Recieved request",
+		"handler", "HandleGetAllUsers",
+	)
+
+	users, err := s.userStore.GetUsers(r.Context(), 10, 0)
+	if err != nil {
+		s.handleError(w, err)
+		return
+	}
+
+	response := make([]*GetAllUsersResponse, 0, len(users))
+
+	for _, user := range users {
+		response = append(response, user)
+	}
+
+	// Writing a response
+	s.respondJSON(w, http.StatusOK, response)
+}
+
 // Handles getting user by it's email
 func (s *Server) HandleGetUserByEmail(w http.ResponseWriter, r *http.Request) {
 	req := new(GetUserByEmailRequest)
@@ -135,6 +163,7 @@ func (s *Server) HandleGetUserByEmail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.log.Info("Recieved request",
+		"handler", "HandleGetUsersByEmail",
 		"email", req.Email,
 		"username", req.Username,
 	)
@@ -158,4 +187,7 @@ func (s *Server) HandleGetUserByEmail(w http.ResponseWriter, r *http.Request) {
 
 	// Writing a response
 	s.respondJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) HandleDeleteUser(w http.ResponseWriter, r *http.Request) {
 }
