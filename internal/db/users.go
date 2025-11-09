@@ -30,7 +30,6 @@ func (s *PostgresStore) CreateUser(ctx context.Context, user *User) error {
 		user.CreatedAt,
 		user.UpdatedAt,
 	)
-
 	if err != nil {
 		if ctx.Err() != nil {
 			return fmt.Errorf("operation cancelled: %w", ctx.Err())
@@ -57,7 +56,6 @@ func (s *PostgresStore) GetUserByID(ctx context.Context, id uuid.UUID) (*User, e
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
-
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, fmt.Errorf("user not found")
@@ -84,7 +82,6 @@ func (s *PostgresStore) GetUserByEmail(ctx context.Context, email string) (*User
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
-
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, fmt.Errorf("user not found")
@@ -148,7 +145,6 @@ func (s *PostgresStore) UpdateUser(ctx context.Context, user *User) error {
 		user.Email,
 		user.UpdatedAt,
 	)
-
 	if err != nil {
 		return fmt.Errorf("failed to update user: %w", err)
 	}

@@ -168,6 +168,8 @@ func (s *Server) HandleGetAllUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.log.Info("Got users", "count", len(users))
+
 	userResponses := make([]UserResponse, 0, len(users))
 
 	for _, user := range users {
