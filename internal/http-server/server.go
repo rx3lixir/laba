@@ -8,19 +8,22 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/rx3lixir/laba/internal/db"
+	"github.com/rx3lixir/laba/pkg/jwt"
 )
 
 type Server struct {
 	userStore  db.UserStore
+	jwtService *jwt.Service
 	log        *log.Logger
 	httpServer *http.Server
 	ctx        context.Context
 }
 
-func New(addr string, userStore db.UserStore, logger *log.Logger) *Server {
+func New(addr string, userStore db.UserStore, jwtService *jwt.Service, logger *log.Logger) *Server {
 	s := &Server{
-		userStore: userStore,
-		log:       logger,
+		userStore:  userStore,
+		jwtService: jwtService,
+		log:        logger,
 	}
 
 	router := s.setupRoutes()
@@ -37,7 +40,6 @@ func New(addr string, userStore db.UserStore, logger *log.Logger) *Server {
 }
 
 // Start begins listening fot HTTP requests
-// This is a blocking operation
 func (s *Server) Start() error {
 	s.log.Info(
 		"Starting HTTP server",

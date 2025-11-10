@@ -11,6 +11,7 @@ import (
 	"github.com/rx3lixir/laba/internal/config"
 	"github.com/rx3lixir/laba/internal/db"
 	"github.com/rx3lixir/laba/internal/http-server"
+	"github.com/rx3lixir/laba/pkg/jwt"
 )
 
 func main() {
@@ -60,15 +61,25 @@ func main() {
 	}
 	defer pool.Close()
 
-	logger.Info("Database connection established",
+	logger.Info(
+		"Database connection established",
 		"db", c.MainDBParams.GetDSN(),
 	)
 
 	// Creates database store
 	store := db.NewPostgresStore(pool)
 
+	// Initializing JWT service
+	jwtService := jwt.NewService(
+		c.GeneralParams.SecretKey,
+		15*time.Minute,
+		7*24*time.Hour,
+	)
+
+	logger.Info("JWT service initialized")
+
 	// Creates HTTP server
-	HTTPserver := httpserver.New(c.GeneralParams.HTTPaddress, store, logger)
+	HTTPserver := httpserver.New(c.GeneralParams.HTTPaddress, store, jwtService, logger)
 
 	// Channel to listen for errors coming from the server
 	serverErrors := make(chan error, 1)
