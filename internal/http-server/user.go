@@ -143,10 +143,10 @@ func (s *Server) HandleGetAllUsers(w http.ResponseWriter, r *http.Request) {
 
 	// Default values
 	limit := 10
-	offset := 10
+	offset := 0
 
 	if limitQuery != "" {
-		if parsedLimit, err := strconv.Atoi(limitQuery); err != nil && parsedLimit > 0 {
+		if parsedLimit, err := strconv.Atoi(limitQuery); err == nil && parsedLimit > 0 {
 			limit = parsedLimit
 			// To prevent abuse
 			if limit > 100 {
