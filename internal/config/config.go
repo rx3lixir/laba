@@ -11,6 +11,8 @@ type Config struct {
 	GeneralParams GeneralParams
 	MainDBParams  MainDBParams
 	AuthDBParams  AuthDBParams
+	UDPParams     UDPParams
+	S3Params      S3Params
 }
 
 type GeneralParams struct {
@@ -32,6 +34,19 @@ type AuthDBParams struct {
 	Host     string
 	Username string
 	Password string
+}
+
+type UDPParams struct {
+	Address string
+	Port    int
+}
+
+type S3Params struct {
+	Endpoint        string
+	AccessKeyID     string
+	SecretAccessKey string
+	UseSSL          bool
+	BucketName      string
 }
 
 type ConfigManager struct {
@@ -84,6 +99,17 @@ func (cm *ConfigManager) loadConfig() error {
 			Host:     cm.v.GetString("auth_db_params.db_host"),
 			Username: cm.v.GetString("auth_db_params.db_username"),
 			Password: cm.v.GetString("auth_db_params.db_password"),
+		},
+		UDPParams: UDPParams{
+			Address: cm.v.GetString("udp_params.address"),
+			Port:    cm.v.GetInt("udp_params.port"),
+		},
+		S3Params: S3Params{
+			Endpoint:        cm.v.GetString("s3_params.endpoint"),
+			AccessKeyID:     cm.v.GetString("s3_params.access_key_id"),
+			SecretAccessKey: cm.v.GetString("s3_params.secret_access_key"),
+			UseSSL:          cm.v.GetBool("s3_params.use_ssl"),
+			BucketName:      cm.v.GetString("s3_params.bucket_name"),
 		},
 	}
 	return nil
@@ -156,6 +182,28 @@ func (c *Config) Validate() error {
 		if authDbConf.Password == "" {
 			return fmt.Errorf("%s: password is required", name)
 		}
+	}
+
+	// Checking UDP params
+	if c.UDPParams.Address == "" {
+		return fmt.Errorf("UDP address is required")
+	}
+	if c.UDPParams.Port <= 0 || c.UDPParams.Port > 65535 {
+		return fmt.Errorf("UDP port must be between 1 and 65535")
+	}
+
+	// Checking S3 params
+	if c.S3Params.Endpoint == "" {
+		return fmt.Errorf("S3 endpoint is required")
+	}
+	if c.S3Params.AccessKeyID == "" {
+		return fmt.Errorf("S3 access_key id is required")
+	}
+	if c.S3Params.SecretAccessKey == "" {
+		return fmt.Errorf("S3 secret_access_key is required")
+	}
+	if c.S3Params.BucketName == "" {
+		return fmt.Errorf("S3 bucket name is required")
 	}
 
 	return nil

@@ -13,3 +13,12 @@ auth_db_params:
   db_host: localhost
   db_username: laba_admin
   db_password: 12345
+udp_params:
+  udp_server_address: localhost
+  port: 9090
+s3_params:
+  endpoint: localhost:9000
+  access_key_id: laba_admin
+  secret_access_key: 12345678
+  use_ssl: false
+  bucket_name: voice_messages
