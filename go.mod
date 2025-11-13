@@ -9,6 +9,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/spf13/viper v1.21.0
+	github.com/valkey-io/valkey-go v1.0.68
 	golang.org/x/crypto v0.40.0
 )
 

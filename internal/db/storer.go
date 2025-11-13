@@ -19,7 +19,6 @@ type DBTX interface {
 }
 
 // UserStore defines all user-related database operations
-// It should be passed into handlers
 type UserStore interface {
 	CreateUser(ctx context.Context, user *User) error
 	GetUserByID(ctx context.Context, id uuid.UUID) (*User, error)
@@ -27,6 +26,17 @@ type UserStore interface {
 	GetUsers(ctx context.Context, limit, offset int) ([]*User, error)
 	UpdateUser(ctx context.Context, user *User) error
 	DeleteUser(ctx context.Context, id uuid.UUID) error
+}
+
+// MessageStore defines all voice message-related database operations
+type MessageStore interface {
+	CreateMessage(ctx context.Context, msg *VoiceMessage) error
+	GetMessageByID(ctx context.Context, id uuid.UUID) (*VoiceMessage, error)
+	GetMessagesBySender(ctx context.Context, senderID uuid.UUID, limit, offset int) ([]*VoiceMessage, error)
+	GetMessagesByRecipient(ctx context.Context, recipientID uuid.UUID, limit, offset int) ([]*VoiceMessage, error)
+	UpdateMessage(ctx context.Context, msg *VoiceMessage) error
+	UpdateMessageStatus(ctx context.Context, id uuid.UUID, status string) error
+	DeleteMessage(ctx context.Context, id uuid.UUID) error
 }
 
 // PostgresStore is a main database store
