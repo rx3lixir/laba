@@ -133,6 +133,10 @@ func (db *MainDBParams) GetDSN() string {
 	)
 }
 
+func (u *UDPParams) GetAddress() string {
+	return fmt.Sprintf("%s:%d", u.Address, u.Port)
+}
+
 func (c *Config) Validate() error {
 	// Checking secret key
 	if c.GeneralParams.SecretKey == "" {

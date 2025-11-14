@@ -10,7 +10,7 @@ main_db_params:
   db_host: localhost
   db_timeout: 5
 auth_db_params:
-  db_host: localhost
+  db_host: localhost:6379
   db_username: laba_admin
   db_password: 12345
 udp_params:

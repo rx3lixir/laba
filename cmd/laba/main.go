@@ -11,6 +11,8 @@ import (
 	"github.com/rx3lixir/laba/internal/config"
 	"github.com/rx3lixir/laba/internal/db"
 	"github.com/rx3lixir/laba/internal/http-server"
+	"github.com/rx3lixir/laba/internal/session"
+	"github.com/rx3lixir/laba/internal/udp"
 	"github.com/rx3lixir/laba/pkg/jwt"
 )
 
@@ -78,16 +80,51 @@ func main() {
 
 	logger.Info("JWT service initialized")
 
+	// Initialize Key-value storage
+	sessionManager, err := session.NewManager(
+		c.AuthDBParams.Host,
+		c.AuthDBParams.Password,
+	)
+	if err != nil {
+		logger.Error("Failed to create session manager", "error", err)
+		os.Exit(1)
+	}
+	defer sessionManager.Close()
+
+	logger.Info("Key-Value session maanger initialized")
+
 	// Creates HTTP server
-	HTTPserver := httpserver.New(c.GeneralParams.HTTPaddress, store, jwtService, logger)
+	HTTPserver := httpserver.New(
+		c.GeneralParams.HTTPaddress,
+		store,
+		jwtService,
+		logger,
+	)
 
-	// Channel to listen for errors coming from the server
-	serverErrors := make(chan error, 1)
+	// Creates UDP server
+	udpServer := udp.New(
+		c.UDPParams.GetAddress(),
+		sessionManager,
+		jwtService,
+		store, // UserStore
+		store, // MessageStore
+		logger,
+	)
 
-	// Start the server in a gorutine
+	// Channel to listen for errors coming from the servers
+	serverErrors := make(chan error, 2)
+
+	// Start the HTTP server in a gorutine
 	go func() {
 		serverErrors <- HTTPserver.Start()
 	}()
+
+	// Start the UDP server in a gorutine
+	go func() {
+		serverErrors <- udpServer.Start()
+	}()
+
+	logger.Info("All servers started successfully")
 
 	// Channel to listen for interrupt signals
 	shutdown := make(chan os.Signal, 1)
@@ -106,12 +143,16 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		// Shutting down a server
+		// Shutting down servers
+		logger.Info("Shutting down HTTP server...")
 		if err := HTTPserver.Shutdown(ctx); err != nil {
 			logger.Error("Graceful shutdown failed", "error", err)
-			os.Exit(1)
+		}
+		logger.Info("Shutting down HTTP server...")
+		if err := udpServer.Shutdown(ctx); err != nil {
+			logger.Error("UDP server graceful shutdown failed", "error", err)
 		}
 
-		logger.Info("Server stopped gracefully")
+		logger.Info("All servers stopped gracefully")
 	}
 }
