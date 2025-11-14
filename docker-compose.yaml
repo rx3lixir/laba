@@ -13,14 +13,28 @@ services:
       - main-db-data:/var/lib/postgresql/data
     restart: unless-stopped
   auth-db:
-    image: redis:7.2-alpine
-    container_name: auth-db
+    image: valkey/valkey:latest
+    container_name: laba-auth-db-container
     ports:
       - "6379:6379"
     volumes:
       - auth-db-data:/data
-    command: redis-server --appendonly yes --requirepass "12345"
+    command: valkey-server --appendonly yes --requirepass "12345"
+    restart: unless-stopped
+  s3-db:
+    image: minio/minio:latest
+    container_name: laba-s3-db-container
+    environment:
+      - MINIO_ROOT_USER=laba_admin
+      - MINIO_ROOT_PASSWORD=12345
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - s3-db-data:/data
     restart: unless-stopped
 volumes:
   main-db-data:
   auth-db-data:
+  s3-db-data:
