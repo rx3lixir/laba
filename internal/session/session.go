@@ -178,7 +178,7 @@ func (m *Manager) DeleteSession(ctx context.Context, userID uuid.UUID) error {
 // IsUserOnline checks if a user is online
 func (m *Manager) IsUserOnline(ctx context.Context, userID uuid.UUID) (bool, error) {
 	sismemberCmd := m.client.B().Sismember().
-		Key("onnline_users").
+		Key("online_users").
 		Member(userID.String()).
 		Build()
 
