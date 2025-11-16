@@ -47,6 +47,8 @@ func main() {
 	logger.Info(
 		"Configuration loaded",
 		"env", c.GeneralParams.Env,
+		"http_addr", c.GeneralParams.HTTPaddress,
+		"udp_addr", c.UDPParams.GetAddress(),
 		"database", c.MainDBParams.Name,
 		"auth", c.AuthDBParams.Host,
 	)
@@ -91,7 +93,7 @@ func main() {
 	}
 	defer sessionManager.Close()
 
-	logger.Info("Key-Value session maanger initialized")
+	logger.Info("Key-Value session manger initialized")
 
 	// Creates HTTP server
 	HTTPserver := httpserver.New(

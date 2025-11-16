@@ -89,6 +89,56 @@ func (s *PostgresStore) GetMessageByID(ctx context.Context, id uuid.UUID) (*Voic
 	return msg, nil
 }
 
+// GetMessagesBySender
+func (s *PostgresStore) GetMessagesBySender(ctx context.Context, senderID uuid.UUID, limit, offset int) ([]*VoiceMessage, error) {
+	query := `
+		SELECT 
+			id, sender_id, recipient_id, file_path, file_size,
+			duration_seconds, audio_format, total_chunks, chunks_received,
+			status, created_at, transmitted_at, delivered_at, listened_at
+		FROM voice_messages
+		WHERE sender_id = $1
+		ORDER BY created_at DESC
+		LIMIT $2 OFFSET $3
+	`
+
+	rows, err := s.db.Query(ctx, query, senderID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get messages: %w", err)
+	}
+	defer rows.Close()
+
+	messages := []*VoiceMessage{}
+	for rows.Next() {
+		msg := &VoiceMessage{}
+		err := rows.Scan(
+			&msg.ID,
+			&msg.SenderID,
+			&msg.RecipientID,
+			&msg.FilePath,
+			&msg.FileSize,
+			&msg.DurationSecs,
+			&msg.AudioFormat,
+			&msg.TotalChunks,
+			&msg.ChunksReceived,
+			&msg.Status,
+			&msg.CreatedAt,
+			&msg.TransmittedAt,
+			&msg.DeliveredAt,
+			&msg.ListenedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan message: %w", err)
+		}
+		messages = append(messages, msg)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating messages: %w", err)
+	}
+
+	return messages, nil
+}
+
 // GetMessagesByRecipient retrieves all messages received by a user
 func (s *PostgresStore) GetMessagesByRecipient(ctx context.Context, recipientID uuid.UUID, limit, offset int) ([]*VoiceMessage, error) {
 	query := `

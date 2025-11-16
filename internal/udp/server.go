@@ -5,28 +5,31 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/charmbracelet/log"
 	"github.com/google/uuid"
 	"github.com/rx3lixir/laba/internal/db"
 	"github.com/rx3lixir/laba/internal/session"
 	"github.com/rx3lixir/laba/pkg/jwt"
+	"github.com/rx3lixir/laba/pkg/s3storage"
 )
 
 const MaxPacketSize = 2048
 
 // Server represents a UDP server for voice messages
 type Server struct {
-	addr           string
-	conn           *net.UDPConn
-	sessionManager *session.Manager
-	jwtService     *jwt.Service
-	userStore      db.UserStore
-	messageStore   db.MessageStore
-	logger         *log.Logger
-	ctx            context.Context
-	cancel         context.CancelFunc
-	wg             sync.WaitGroup
+	addr            string
+	conn            *net.UDPConn
+	sessionManager  *session.Manager
+	jwtService      *jwt.Service
+	userStore       db.UserStore
+	messageStore    db.MessageStore
+	s3storageClient *s3storage.MinIOClient
+	logger          *log.Logger
+	ctx             context.Context
+	cancel          context.CancelFunc
+	wg              sync.WaitGroup
 }
 
 // New creates a new UDP server
@@ -210,13 +213,158 @@ func (s *Server) processCompleteMessage(messageID uuid.UUID, senderID, recipient
 
 	s.logger.Info("Proccessing complete message", "message_id", messageID)
 
-	// TODO:
-	// 1. Retrieve all chunks from key-value storage
-	// 2. Assemble them into a complete file
-	// 3. Upload to S3
-	// 4. Update database
+	// 1. Retrieve all chunks from key-val storage
+	chunks := make([][]byte, totalChunks)
+	var totalSize int
+
+	for i := uint32(0); i < totalChunks; i++ {
+		chunkData, err := s.sessionManager.GetPendingChunk(s.ctx, messageID, i)
+		if err != nil {
+			s.logger.Error(
+				"Failed to retrieve chunk",
+				"message_id", messageID,
+				"chunk", i,
+				"error", err,
+			)
+			s.updateMessageStatus(messageID, db.MessageStatusFailed)
+			return
+		}
+		chunks[i] = chunkData
+		totalSize += len(chunkData)
+	}
+
+	// 2. Assemble chunks into complete file
+	assembledData := make([]byte, 0, totalSize)
+	for _, chunk := range chunks {
+		assembledData = append(assembledData, chunk...)
+	}
+
+	s.logger.Info("File assembled", "message_id", messageID, "size", len(assembledData))
+
+	// 3. Upload to s3 storage
+	audioFromat := "opus" // default
+
+	objectPath, err := s.s3storageClient.UploadVoiceMessage(s.ctx, messageID, assembledData, audioFromat)
+	if err != nil {
+		s.logger.Error(
+			"Failed to upload to s3",
+			"message_id", messageID,
+			assembledData,
+			audioFromat,
+		)
+	}
+
+	// 4. Create database record
+	now := time.Now()
+	voiceMessage := &db.VoiceMessage{
+		ID:             messageID,
+		SenderID:       senderID,
+		RecipientID:    recipientID,
+		FilePath:       objectPath,
+		FileSize:       len(assembledData),
+		AudioFormat:    audioFromat,
+		TotalChunks:    int(totalChunks),
+		ChunksReceived: int(totalChunks),
+		Status:         db.MessageStatusTransmitted,
+		TransmittedAt:  &now,
+	}
+
+	if err := s.messageStore.CreateMessage(s.ctx, voiceMessage); err != nil {
+		s.logger.Error("Failed to create message record", "message_id", messageID, "error", err)
+		// Still mark as transmitted as file is in s3
+	} else {
+		s.logger.Info("Message record created", "message_id", messageID)
+	}
+
 	// 5. Forward to recipient if online
-	// 6. Clean up key-value storage
+	recipientOnline, err := s.sessionManager.IsUserOnline(s.ctx, recipientID)
+	if err != nil {
+		s.logger.Warn(
+			"Failed to check recipient status",
+			"recipient_id", recipientID,
+			"error", err,
+		)
+	} else if recipientOnline {
+		s.logger.Info(
+			"Recipient is online, forwarding message",
+			"recipient_id", recipientID,
+		)
+		s.forwardMessageToRecipient(messageID, senderID, recipientID, assembledData, totalChunks)
+	} else {
+		s.logger.Info(
+			"Recipient is offline, message stored for later retrieval",
+			"recipient_id", recipientID,
+		)
+
+		// 6. Clean up key-value storage
+		if err := s.sessionManager.DeletePendingMessage(s.ctx, messageID, totalChunks); err != nil {
+			s.logger.Warn("Failed to clean up pending message", "message_id", messageID, "error", err)
+		} else {
+			s.logger.Info("Pending message cleaned up", "message_id", messageID)
+		}
+
+		s.logger.Info("✓ Message processing complete", "message_id", messageID)
+	}
+}
+
+// forwardMessageToRecipient sends the message to an online recipient
+func (s *Server) forwardMessageToRecipient(messageID uuid.UUID, senderID, recipientID uuid.UUID, data []byte, totalChunks uint32) {
+	// Get recipient session to find their UDP address
+	recipientSession, err := s.sessionManager.GetSession(s.ctx, recipientID)
+	if err != nil {
+		s.logger.Error("Failed to get recipient session", "recipient_id", recipientID, "error", err)
+		return
+	}
+
+	// Parse recipient UDP address
+	recipientAddr, err := net.ResolveUDPAddr("udp", recipientSession.Address)
+	if err != nil {
+		s.logger.Error(
+			"Failed to resolve recipient address",
+			"address", recipientSession.Address,
+			"error", err,
+		)
+		return
+	}
+
+	s.logger.Info(
+		"Forwarding message to recipient",
+		"recipient", recipientSession.Username,
+		"address", recipientAddr,
+		"chunks", totalChunks,
+	)
+
+	// Split back into chunks and send
+	chunkSize := MaxPayloadSize
+
+	for i := uint32(0); i < totalChunks; i++ {
+		start := int(i) * chunkSize
+		end := start + chunkSize
+		if end > len(data) {
+			end = len(data)
+		}
+
+		chunkData := data[start:end]
+
+		packet := NewVoiceDataPacket(senderID, recipientID, messageID, i, totalChunks, chunkData)
+		s.sendPacket(packet, recipientAddr)
+
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	s.logger.Info(
+		"Message forwarded successfully",
+		"message_id", messageID,
+		"recipient", recipientSession.Username,
+	)
+
+	now := time.Now()
+	msg := &db.VoiceMessage{
+		ID:          messageID,
+		Status:      db.MessageStatusDelivered,
+		DeliveredAt: &now,
+	}
+	s.messageStore.UpdateMessage(s.ctx, msg)
 }
 
 // handleHeartbeat keeps the session alive
@@ -229,6 +377,18 @@ func (s *Server) handleHeartbeat(packet *Packet, clientAddr *net.UDPAddr) {
 
 	ackPacket := NewAckPacket(packet)
 	s.sendPacket(ackPacket, clientAddr)
+}
+
+// updateMessageStatus is a helper to update message status
+func (s *Server) updateMessageStatus(messageId uuid.UUID, status string) {
+	if err := s.messageStore.UpdateMessageStatus(s.ctx, messageId, status); err != nil {
+		s.logger.Error(
+			"Failed to update message status",
+			"message_id", messageId,
+			"status", status,
+			"error", err,
+		)
+	}
 }
 
 // sendPacket sends a packet to a client
