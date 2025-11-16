@@ -244,15 +244,15 @@ func (s *Server) processCompleteMessage(messageID uuid.UUID, senderID, recipient
 	s.logger.Info("File assembled", "message_id", messageID, "size", len(assembledData))
 
 	// 3. Upload to s3 storage
-	audioFromat := "opus" // default
+	audioFormat := "opus" // default
 
-	objectPath, err := s.s3storageClient.UploadVoiceMessage(s.ctx, messageID, assembledData, audioFromat)
+	objectPath, err := s.s3storageClient.UploadVoiceMessage(s.ctx, messageID, assembledData, audioFormat)
 	if err != nil {
 		s.logger.Error(
 			"Failed to upload to s3",
 			"message_id", messageID,
 			assembledData,
-			audioFromat,
+			audioFormat,
 		)
 	}
 
@@ -264,7 +264,7 @@ func (s *Server) processCompleteMessage(messageID uuid.UUID, senderID, recipient
 		RecipientID:    recipientID,
 		FilePath:       objectPath,
 		FileSize:       len(assembledData),
-		AudioFormat:    audioFromat,
+		AudioFormat:    audioFormat,
 		TotalChunks:    int(totalChunks),
 		ChunksReceived: int(totalChunks),
 		Status:         db.MessageStatusTransmitted,
