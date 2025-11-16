@@ -44,6 +44,8 @@ func New(
 ) *Server {
 	ctx, cancel := context.WithCancel(context.Background())
 
+	logger.Info("Creating UDP server", "addr", addr, "context", fmt.Sprintf("%p", ctx))
+
 	return &Server{
 		addr:            addr,
 		sessionManager:  sessionMgr,
@@ -61,7 +63,7 @@ func New(
 func (s *Server) Start() error {
 	addr, err := net.ResolveUDPAddr("udp", s.addr)
 	if err != nil {
-		return fmt.Errorf("failed to listen on UDP: %w", err)
+		return fmt.Errorf("failed to resolve UDP address: %w", err)
 	}
 
 	conn, err := net.ListenUDP("udp", addr)
@@ -70,32 +72,39 @@ func (s *Server) Start() error {
 	}
 
 	s.conn = conn
-	s.logger.Info("UDP server started", "address", s.addr)
+	s.logger.Info("UDP server listening", "address", s.addr)
 
-	s.wg.Add(1)
-	go s.listen()
+	// This blocks until context is cancelled
+	s.listen()
 
+	s.logger.Info("UDP server stopped")
 	return nil
 }
 
 func (s *Server) listen() {
-	defer s.wg.Done()
-
 	buffer := make([]byte, MaxPacketSize)
 
 	for {
 		select {
 		case <-s.ctx.Done():
-			s.logger.Info("UDP server stopping...")
+			s.logger.Info("UDP server stopping due to context cancellation")
 			return
 		default:
+			// Set read deadline to prevent blocking forever
+			s.conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+
 			n, clientAddr, err := s.conn.ReadFromUDP(buffer)
 			if err != nil {
+				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+					continue
+				}
 				s.logger.Error("Error reading from UDP", "error", err)
 				continue
 			}
 
-			// Process packet in a goroutine to noe block receiving
+			s.logger.Info("Received UDP packet", "bytes", n, "from", clientAddr)
+
+			// Process packet in a goroutine to not block receiving
 			packetData := make([]byte, n)
 			copy(packetData, buffer[:n])
 
@@ -126,8 +135,10 @@ func (s *Server) handlePacket(data []byte, clientAddr *net.UDPAddr) {
 	switch packet.Type {
 	case PacketTypeAuth:
 		s.handleAuth(packet, clientAddr)
+
 	case PacketTypeVoiceData:
 		s.handleVoiceData(packet, clientAddr)
+
 	case PacketTypeHeartbeat:
 		s.handleHeartbeat(packet, clientAddr)
 	default:
@@ -161,7 +172,10 @@ func (s *Server) handleAuth(packet *Packet, clientAddr *net.UDPAddr) {
 		"address", clientAddr,
 	)
 
-	ackPacket := NewAckPacket(packet)
+	ackPacket := NewPacket(PacketTypeAuthAck, uuid.Nil, claims.UserID, packet.MessageID)
+	ackPacket.Payload = []byte("authenticated")
+
+	s.logger.Info("Sending auth ACK", "to", clientAddr, "user_id", claims.UserID)
 	s.sendPacket(ackPacket, clientAddr)
 }
 

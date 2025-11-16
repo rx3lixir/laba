@@ -79,7 +79,7 @@ func (m *Manager) CreateSession(ctx context.Context, userID uuid.UUID, username 
 	setCmd := m.client.B().Set().
 		Key(key).
 		Value(string(data)).
-		Ex(300). // 5 minutes = 300 seconds
+		Ex(300 * time.Second).
 		Build()
 
 	if err := m.client.Do(ctx, setCmd).Error(); err != nil {
@@ -146,7 +146,7 @@ func (m *Manager) UpdateLastSeen(ctx context.Context, userID uuid.UUID) error {
 	setCmd := m.client.B().Set().
 		Key(key).
 		Value(string(data)).
-		Ex(300).
+		Ex(300 * time.Second).
 		Build()
 
 	return m.client.Do(ctx, setCmd).Error()
@@ -200,7 +200,7 @@ func (m *Manager) SavePendingChunk(ctx context.Context, messageID uuid.UUID, chu
 	setCmd := m.client.B().Set().
 		Key(key).
 		Value(valkey.BinaryString(data)).
-		Ex(600). // 10 minutes
+		Ex(600 * time.Second). // 10 minutes
 		Build()
 
 	return m.client.Do(ctx, setCmd).Error()

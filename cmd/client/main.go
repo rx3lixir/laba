@@ -128,7 +128,7 @@ func (c *Client) listen() {
 
 func (c *Client) handlePacket(packet *udp.Packet) {
 	switch packet.Type {
-	case udp.PacketTypeAuth:
+	case udp.PacketTypeAuthAck:
 		c.logger.Debug("Received auth ACK")
 		c.ackChan <- packet
 
@@ -141,6 +141,7 @@ func (c *Client) handlePacket(packet *udp.Packet) {
 
 	case udp.PacketTypeError:
 		c.logger.Error("Received error from server", "error", string(packet.Payload))
+
 	case udp.PacketTypeVoiceData:
 		c.logger.Info("Received voice message",
 			"message_id", packet.MessageID,
