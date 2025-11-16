@@ -99,6 +99,7 @@ func NewClient(serverAddr, jwtToken string, logger *log.Logger) (*Client, error)
 	return client, nil
 }
 
+// listen is listens idk
 func (c *Client) listen() {
 	buffer := make([]byte, 2048)
 
@@ -116,9 +117,16 @@ func (c *Client) listen() {
 				c.logger.Error("Error reading from UDP", "error", err)
 				continue
 			}
+
+			// Make sure we have enough data
+			if n < 48 {
+				c.logger.Warn("Received packet too small", "bytes", n)
+				continue
+			}
+
 			packet, err := udp.Unmarshal(buffer[:n])
 			if err != nil {
-				c.logger.Error("Failed to unmarshal packet", "error", err)
+				c.logger.Error("Failed to unmarshal packet", "error", err, "bytes", n)
 				continue
 			}
 			c.handlePacket(packet)

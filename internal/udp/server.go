@@ -179,7 +179,7 @@ func (s *Server) handleAuth(packet *Packet, clientAddr *net.UDPAddr) {
 	s.sendPacket(ackPacket, clientAddr)
 }
 
-// handleVoiceData proccesses voice data chunks
+// handleVoiceData processes voice data chunks
 func (s *Server) handleVoiceData(packet *Packet, clientAddr *net.UDPAddr) {
 	session, err := s.sessionManager.GetSession(s.ctx, packet.SenderID)
 	if err != nil {
@@ -189,14 +189,14 @@ func (s *Server) handleVoiceData(packet *Packet, clientAddr *net.UDPAddr) {
 
 	s.sessionManager.UpdateLastSeen(s.ctx, packet.SenderID)
 
-	// Saving current chunk to keyvalue storage
+	// CRITICAL: Save chunk BEFORE incrementing counter
 	err = s.sessionManager.SavePendingChunk(s.ctx, packet.MessageID, packet.ChunkIndex, packet.Payload)
 	if err != nil {
 		s.logger.Error("Failed to save a chunk", "error", err, "message_id", packet.MessageID)
 		return
 	}
 
-	// Increment chunk counter
+	// NOW increment the counter - this ensures the chunk is saved first
 	count, err := s.sessionManager.IncrementChunksReceived(s.ctx, packet.MessageID)
 	if err != nil {
 		s.logger.Error("Failed to increment chunk counter", "error", err)
@@ -211,13 +211,18 @@ func (s *Server) handleVoiceData(packet *Packet, clientAddr *net.UDPAddr) {
 		"from", session.Username,
 	)
 
-	// Send ACK
+	// Send ACK with a payload to avoid EOF errors
 	ackPacket := NewAckPacket(packet)
+	ackPacket.Payload = []byte("ok")
 	s.sendPacket(ackPacket, clientAddr)
 
 	// Check if all chunks received
 	if uint32(count) == packet.TotalChunks {
 		s.logger.Info("All chunks received", "message_id", packet.MessageID, "total", packet.TotalChunks)
+
+		// Add a small delay to ensure all writes are flushed to Redis
+		time.Sleep(50 * time.Millisecond)
+
 		s.wg.Add(1)
 		go s.processCompleteMessage(packet.MessageID, packet.SenderID, packet.RecipientID, packet.TotalChunks)
 	}
@@ -234,7 +239,27 @@ func (s *Server) processCompleteMessage(messageID uuid.UUID, senderID, recipient
 	var totalSize int
 
 	for i := uint32(0); i < totalChunks; i++ {
-		chunkData, err := s.sessionManager.GetPendingChunk(s.ctx, messageID, i)
+		var chunkData []byte
+		var err error
+
+		// Retry up to 3 times with exponential backoff
+		for attempt := 0; attempt < 3; attempt++ {
+			chunkData, err = s.sessionManager.GetPendingChunk(s.ctx, messageID, i)
+			if err == nil {
+				break
+			}
+
+			if attempt < 2 {
+				s.logger.Warn(
+					"Chunk is not ready, retrying...",
+					"message_id", messageID,
+					"chunk", i,
+					"attempt", attempt+1,
+				)
+				time.Sleep(time.Duration(50*(attempt+1)) * time.Millisecond)
+			}
+		}
+
 		if err != nil {
 			s.logger.Error(
 				"Failed to retrieve chunk",
