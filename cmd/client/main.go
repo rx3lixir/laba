@@ -171,6 +171,7 @@ func (c *Client) handlePacket(packet *udp.Packet) {
 			"chunk", fmt.Sprintf("%d/%d", packet.ChunkIndex, packet.TotalChunks),
 			"from", packet.SenderID,
 		)
+		c.dataChan <- packet
 
 	case udp.PacketTypeMessageList:
 		c.logger.Debug("Received message list")

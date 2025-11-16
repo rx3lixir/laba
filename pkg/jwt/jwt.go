@@ -78,6 +78,18 @@ func (s *Service) ValidateToken(tokenStirng string) (*Claims, error) {
 		return nil, fmt.Errorf("token is invalid")
 	}
 
+	if claims.UserID == uuid.Nil {
+		return nil, fmt.Errorf("invalid access token: missing user_id (this might be a refresh token)")
+	}
+
+	if claims.Email == "" {
+		return nil, fmt.Errorf("invalid access token: missing email")
+	}
+
+	if claims.Username == "" {
+		return nil, fmt.Errorf("invalid access token: missing username")
+	}
+
 	return claims, nil
 }
 
@@ -96,6 +108,10 @@ func (s *Service) ValidateRefreshToken(tokenString string) (uuid.UUID, error) {
 	claims, ok := token.Claims.(*jwt.RegisteredClaims)
 	if !ok || !token.Valid {
 		return uuid.Nil, fmt.Errorf("invalid refresh token")
+	}
+
+	if claims.Subject == "" {
+		return uuid.Nil, fmt.Errorf("invalid refresh token: missing subject")
 	}
 
 	userID, err := uuid.Parse(claims.Subject)
