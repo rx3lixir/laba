@@ -100,6 +100,8 @@ func NewClient(serverAddr, jwtToken string, logger *log.Logger) (*Client, error)
 		jwtToken:       jwtToken,
 		logger:         logger,
 		ackChan:        make(chan *udp.Packet, 100),
+		dataChan:       make(chan *udp.Packet, 100),
+		listChan:       make(chan *udp.Packet, 100),
 		ctx:            ctx,
 		cancel:         cancel,
 		downloadChunks: make(map[uuid.UUID]map[uint32][]byte),
