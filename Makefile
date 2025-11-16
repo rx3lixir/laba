@@ -3,7 +3,9 @@
 # ============================================================================
 
 # Binary name for compilation
-BINARY_NAME=laba
+SERVER_BINARY=laba
+CLIENT_BINARY=client
+TEST_AUDIO_BINARY=test-audio
 
 # Database connection parameters for migrations tool
 MIGRATIONS_HOST=localhost
@@ -32,18 +34,45 @@ all: build ## Default build command
 # BUILD & RUN
 # ============================================================================
 
-build: ## Build the binary
-	@echo "Building..."
-	go build -o ./bin/$(BINARY_NAME) ./cmd/laba/main.go
+build: build-server build-client build-test-audio
 
-run: build ## Build and run the app
-	@echo "Running..."
-	./bin/$(BINARY_NAME)
+build-server: ## Build the binary
+	@echo "Building server..."
+	go build -o ./bin/$(SERVER_BINARY) ./cmd/laba/main.go
 
-clean: ## Clean binary
+build-client:
+	@echo "Building client..."
+	go build -o ./bin/$(CLIENT_BINARY) ./cmd/client/main.go
+
+build-test-audio:
+	@echo "Building test audio generator..."
+	go build -o ./bin/$(TEST_AUDIO_BINARY) ./cmd/test-audio/main.go
+
+run: build-server ## Build and run the server
+	@echo "Running server..."
+	./bin/$(SERVER_BINARY)
+
+run-client: build-client ## Build and run the client (requires JWT token)
+	@echo "Usage: make run-client TOKEN=your_jwt_token"
+	@if [ -z "$(TOKEN)" ]; then \
+		echo "Error: TOKEN variable is required"; \
+		echo "Example: make run-client TOKEN=eyJhbGc..."; \
+		exit 1; \
+	fi
+	./bin/$(CLIENT_BINARY) -token $(TOKEN)
+
+generate-test-audio: build-test-audio ## Generate a test audio file
+	@echo "Generating test audio file..."
+	./bin/$(TEST_AUDIO_BINARY) -size 10240 -output test_audio.opus
+	@echo "Test file created: test_audio.opus"
+
+clean: ## Clean all binaries
 	@echo "Cleaning..."
 	go clean
-	rm -f ./bin/$(BINARY_NAME)
+	rm -f ./bin/$(SERVER_BINARY)
+	rm -f ./bin/$(CLIENT_BINARY)
+	rm -f ./bin/$(TEST_AUDIO_BINARY)
+	rm -f test_audio.opus
 
 # ============================================================================
 # TESTING
