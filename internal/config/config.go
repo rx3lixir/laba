@@ -101,8 +101,8 @@ func (cm *ConfigManager) loadConfig() error {
 			Password: cm.v.GetString("auth_db_params.db_password"),
 		},
 		UDPParams: UDPParams{
-			Address: cm.v.GetString("udp_params.address"),
-			Port:    cm.v.GetInt("udp_params.port"),
+			Address: cm.v.GetString("udp_params.udp_server_address"),
+			Port:    cm.v.GetInt("udp_params.udp_server_port"),
 		},
 		S3Params: S3Params{
 			Endpoint:        cm.v.GetString("s3_params.endpoint"),

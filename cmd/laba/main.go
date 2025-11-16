@@ -14,6 +14,7 @@ import (
 	"github.com/rx3lixir/laba/internal/session"
 	"github.com/rx3lixir/laba/internal/udp"
 	"github.com/rx3lixir/laba/pkg/jwt"
+	"github.com/rx3lixir/laba/pkg/s3storage"
 )
 
 func main() {
@@ -95,6 +96,21 @@ func main() {
 
 	logger.Info("Key-Value session manger initialized")
 
+	// Initialize S3 client
+	s3Client, err := s3storage.NewMinIOClient(
+		c.S3Params.Endpoint,
+		c.S3Params.AccessKeyID,
+		c.S3Params.SecretAccessKey,
+		c.S3Params.BucketName,
+		c.S3Params.UseSSL,
+	)
+	if err != nil {
+		logger.Error("Failed to create S3 client", "error", err)
+		os.Exit(1)
+	}
+
+	logger.Info("S3 storage client initialized", "bucket", c.S3Params.BucketName)
+
 	// Creates HTTP server
 	HTTPserver := httpserver.New(
 		c.GeneralParams.HTTPaddress,
@@ -110,6 +126,7 @@ func main() {
 		jwtService,
 		store, // UserStore
 		store, // MessageStore
+		s3Client,
 		logger,
 	)
 

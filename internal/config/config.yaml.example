@@ -1,6 +1,6 @@
 general_params:
   env: dev
-  secret_key: 36080001349340267925113477454910
+  secret_key: YOUR_SECRET_KEY_HERE_CHANGE_THIS
   http_server_address: localhost:8080
 main_db_params:
   db_username: laba_admin
@@ -14,7 +14,7 @@ auth_db_params:
   db_username: laba_admin
   db_password: 12345
 udp_params:
-  udp_server_address: localhost
+  address: localhost  # Fixed!
   port: 9090
 s3_params:
   endpoint: localhost:9000

@@ -39,19 +39,21 @@ func New(
 	jwtSvc *jwt.Service,
 	userStore db.UserStore,
 	messageStore db.MessageStore,
+	s3client *s3storage.MinIOClient,
 	logger *log.Logger,
 ) *Server {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Server{
-		addr:           addr,
-		sessionManager: sessionMgr,
-		jwtService:     jwtSvc,
-		userStore:      userStore,
-		messageStore:   messageStore,
-		logger:         logger,
-		ctx:            ctx,
-		cancel:         cancel,
+		addr:            addr,
+		sessionManager:  sessionMgr,
+		jwtService:      jwtSvc,
+		userStore:       userStore,
+		messageStore:    messageStore,
+		s3storageClient: s3client,
+		logger:          logger,
+		ctx:             ctx,
+		cancel:          cancel,
 	}
 }
 

@@ -28,10 +28,10 @@ CREATE TABLE voice_messages (
   CONSTRAINT fk_recipient FOREIGN KEY (recipient_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_voice_messages_sender ON voice_messages(sender_id);
-CREATE INDEX idx_voice_messages_recipient ON voice_messages(recipient_id);
-CREATE INDEX idx_voice_messages_status ON voice_messages(status);
 CREATE INDEX idx_voice_messages_created_at ON voice_messages(created_at DESC);
+CREATE INDEX idx_voice_messages_status ON voice_messages(status);
+CREATE INDEX idx_voice_messages_recipient ON voice_messages(recipient_id);
+CREATE INDEX idx_voice_messages_sender ON voice_messages(sender_id);
 -- +goose StatementEnd
 
 -- +goose Down
@@ -39,5 +39,6 @@ CREATE INDEX idx_voice_messages_created_at ON voice_messages(created_at DESC);
 DROP INDEX IF EXISTS idx_voice_messages_created_at;
 DROP INDEX IF EXISTS idx_voice_messages_status;
 DROP INDEX IF EXISTS idx_voice_messages_recipient;
-DROP INDEX IF EXISTS voice_messages;
+DROP INDEX IF EXISTS idx_voice_messages_sender;
+DROP TABLE IF EXISTS voice_messages;
 -- +goose StatementEnd

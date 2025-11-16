@@ -126,7 +126,7 @@ func (s *Server) HandleSignin(w http.ResponseWriter, r *http.Request) {
 
 	if !password.Verify(req.Password, user.Password) {
 		s.log.Warn("Signin failed - password is invalid", "email", req.Email)
-		s.respondError(w, http.StatusInternalServerError, "Failed to generate")
+		s.respondError(w, http.StatusUnauthorized, "Invalid email or password")
 		return
 	}
 

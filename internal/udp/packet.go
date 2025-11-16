@@ -157,11 +157,6 @@ func Unmarshal(data []byte) (*Packet, error) {
 		return nil, err
 	}
 
-	// Checksum
-	if err := binary.Read(buf, binary.BigEndian, &p.Checksum); err != nil {
-		return nil, err
-	}
-
 	// Read payload
 	p.Payload = make([]byte, p.PayloadLen)
 	if _, err := buf.Read(p.Payload); err != nil {

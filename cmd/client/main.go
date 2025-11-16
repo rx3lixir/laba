@@ -55,6 +55,17 @@ func main() {
 
 	logger.Info("UDP Voice Chat Client started")
 	logger.Info("Server address", "addr", *serverAddr)
+
+	// Authenticate with server
+	logger.Info("Authenticating...")
+	if err := client.Authenticate(); err != nil {
+		logger.Fatal("Authentication failed", "error", err)
+	}
+
+	logger.Info("✓ Authentication successful", "user_id", client.userID)
+
+	// Starting interactive mode if user is authenticated
+	client.InteractiveMode()
 }
 
 func NewClient(serverAddr, jwtToken string, logger *log.Logger) (*Client, error) {

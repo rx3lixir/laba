@@ -30,4 +30,4 @@ go.work.sum
 .pem
 
 # config file 
-./internal/config/config.yaml
+internal/config/config.yaml
