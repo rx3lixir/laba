@@ -141,6 +141,13 @@ func (s *Server) handlePacket(data []byte, clientAddr *net.UDPAddr) {
 
 	case PacketTypeHeartbeat:
 		s.handleHeartbeat(packet, clientAddr)
+
+	case PacketTypeListMessages:
+		s.handleListMessages(packet, clientAddr)
+
+	case PacketTypeDownloadMsg:
+		s.handleDownloadMessage(packet, clientAddr)
+
 	default:
 		s.logger.Warn("Unknown packet type", "type", packet.Type, "from", clientAddr)
 	}
@@ -189,7 +196,7 @@ func (s *Server) handleVoiceData(packet *Packet, clientAddr *net.UDPAddr) {
 
 	s.sessionManager.UpdateLastSeen(s.ctx, packet.SenderID)
 
-	// CRITICAL: Save chunk BEFORE incrementing counter
+	// Save chunk BEFORE incrementing counter
 	err = s.sessionManager.SavePendingChunk(s.ctx, packet.MessageID, packet.ChunkIndex, packet.Payload)
 	if err != nil {
 		s.logger.Error("Failed to save a chunk", "error", err, "message_id", packet.MessageID)
@@ -406,6 +413,147 @@ func (s *Server) forwardMessageToRecipient(messageID uuid.UUID, senderID, recipi
 		DeliveredAt: &now,
 	}
 	s.messageStore.UpdateMessage(s.ctx, msg)
+}
+
+// handleListMessages returns a list of unread messages for the user
+func (s *Server) handleListMessages(packet *Packet, clientAddr *net.UDPAddr) {
+	session, err := s.sessionManager.GetSession(s.ctx, packet.SenderID)
+	if err != nil {
+		s.logger.Warn("List request from unauthenticated user", "sender_id", packet.SenderID)
+		s.sendErrorPacket(clientAddr, packet.MessageID, "Not authenticated")
+		return
+	}
+
+	s.logger.Info("Fetching messages...", "user_id", session.UserID)
+
+	// Get unread messages from database (transmitted but not delivered)
+	messages, err := s.messageStore.GetMessagesByRecipient(s.ctx, session.UserID, 20, 0)
+	if err != nil {
+		s.logger.Error("Failed to fetch messages", "error", err)
+		s.sendErrorPacket(clientAddr, packet.MessageID, "Failed to fetch messages")
+		return
+	}
+
+	// Filter for undelivered / unlistened messages
+	var unreadMessages []MessageInfo
+	for _, msg := range messages {
+		if msg.Status == db.MessageStatusTransmitted || msg.Status == db.MessageStatusDelivered {
+			sender, err := s.userStore.GetUserByID(s.ctx, msg.SenderID)
+			senderName := "Unknown"
+			if err == nil {
+				senderName = sender.Username
+			}
+
+			info := MessageInfo{
+				ID:          msg.ID,
+				SenderID:    msg.SenderID,
+				SenderName:  senderName,
+				FileSize:    msg.FileSize,
+				Duration:    msg.DurationSecs,
+				AudioFormat: msg.AudioFormat,
+				Status:      msg.Status,
+				CreatedAt:   msg.CreatedAt.Format(time.RFC3339),
+			}
+			unreadMessages = append(unreadMessages, info)
+		}
+	}
+
+	s.logger.Info("Found messages", "count", len(unreadMessages), "user", session.Username)
+
+	responsePacket, err := NewMessageListPacket(session.UserID, unreadMessages)
+	if err != nil {
+		s.logger.Error("Failed to create message list packet", "error", err)
+		s.sendErrorPacket(clientAddr, packet.MessageID, "Failed to create response packet")
+		return
+	}
+
+	s.sendPacket(responsePacket, clientAddr)
+}
+
+// handleDownloadMessage sends a specific message to the client
+func (s *Server) handleDownloadMessage(packet *Packet, clientAddr *net.UDPAddr) {
+	session, err := s.sessionManager.GetSession(s.ctx, packet.SenderID)
+	if err != nil {
+		s.logger.Warn("Download request from unauthenticated user", "sender_id", packet.SenderID)
+		s.sendErrorPacket(clientAddr, packet.MessageID, "Not authenticated")
+		return
+	}
+
+	messageID := packet.MessageID
+	s.logger.Info("Download request", "message_id", messageID, "user", session.Username)
+
+	// Getting message from database
+	msg, err := s.messageStore.GetMessageByID(s.ctx, messageID)
+	if err != nil {
+		s.logger.Error("Message not found", "message_id", messageID, "error", err)
+		s.sendErrorPacket(clientAddr, packet.MessageID, "Message not found")
+		return
+	}
+
+	// Verify the user is the recipient
+	if msg.RecipientID != session.UserID {
+		s.logger.Warn("Unauthorized download attempt",
+			"message_id", messageID,
+			"user", session.UserID,
+			"recipient", msg.RecipientID,
+		)
+		s.sendErrorPacket(clientAddr, packet.MessageID, "Unauthorized")
+		return
+	}
+
+	// Download from S3
+	data, err := s.s3storageClient.DownloadVoiceMessage(s.ctx, msg.FilePath)
+	if err != nil {
+		s.logger.Error("Failed to download from s3", "error", err, "path", msg.FilePath)
+		s.sendErrorPacket(clientAddr, packet.MessageID, "Failed to retrieve message")
+		return
+	}
+
+	s.logger.Info("Downloaded from S3", "message_id", messageID, "size", len(data))
+
+	// Split into chunks and send
+	chunkSize := MaxPayloadSize
+	totalChunks := (len(data) + chunkSize - 1) / chunkSize
+
+	s.logger.Info("Sending message",
+		"message_id", messageID,
+		"chunks", totalChunks,
+		"to", session.Username,
+	)
+
+	for i := 0; i < totalChunks; i++ {
+		start := i * chunkSize
+		end := start + chunkSize
+		if end > len(data) {
+			end = len(data)
+		}
+
+		chunkData := data[start:end]
+		chunkPacket := NewVoiceDataPacket(
+			msg.SenderID,
+			session.UserID,
+			messageID,
+			uint32(i),
+			uint32(totalChunks),
+			chunkData,
+		)
+
+		s.sendPacket(chunkPacket, clientAddr)
+
+		// Small delay to not overwhelm the network
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	// Mark as delivered
+	now := time.Now()
+	msg.Status = db.MessageStatusDelivered
+	msg.DeliveredAt = &now
+
+	if err := s.messageStore.UpdateMessage(s.ctx, msg); err != nil {
+		s.logger.Error("Failed to update message status", "error", err)
+	}
+
+	s.logger.Info("Message send successfully", "message_id", messageID)
 }
 
 // handleHeartbeat keeps the session alive

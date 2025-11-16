@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -23,8 +24,13 @@ type Client struct {
 	authenticated bool
 	logger        *log.Logger
 	ackChan       chan *udp.Packet
+	dataChan      chan *udp.Packet
+	listChan      chan *udp.Packet
 	ctx           context.Context
 	cancel        context.CancelFunc
+
+	downloadChunks map[uuid.UUID]map[uint32][]byte
+	downloadTotal  map[uuid.UUID]uint32
 }
 
 func main() {
@@ -64,6 +70,11 @@ func main() {
 
 	logger.Info("✓ Authentication successful", "user_id", client.userID)
 
+	// Check for messages after auth
+	if err := client.CheckMessages(); err != nil {
+		logger.Error("Failed to check messages", "error", err)
+	}
+
 	// Starting interactive mode if user is authenticated
 	client.InteractiveMode()
 }
@@ -84,13 +95,15 @@ func NewClient(serverAddr, jwtToken string, logger *log.Logger) (*Client, error)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	client := &Client{
-		conn:       conn,
-		serverAddr: udpAddr,
-		jwtToken:   jwtToken,
-		logger:     logger,
-		ackChan:    make(chan *udp.Packet, 100),
-		ctx:        ctx,
-		cancel:     cancel,
+		conn:           conn,
+		serverAddr:     udpAddr,
+		jwtToken:       jwtToken,
+		logger:         logger,
+		ackChan:        make(chan *udp.Packet, 100),
+		ctx:            ctx,
+		cancel:         cancel,
+		downloadChunks: make(map[uuid.UUID]map[uint32][]byte),
+		downloadTotal:  make(map[uuid.UUID]uint32),
 	}
 
 	// Start listening for responses
@@ -156,7 +169,11 @@ func (c *Client) handlePacket(packet *udp.Packet) {
 			"chunk", fmt.Sprintf("%d/%d", packet.ChunkIndex, packet.TotalChunks),
 			"from", packet.SenderID,
 		)
-		// TODO: handle incoming voice messages
+
+	case udp.PacketTypeMessageList:
+		c.logger.Debug("Received message list")
+		c.listChan <- packet
+
 	default:
 		c.logger.Warn("Unknown packet type", "type", packet.Type)
 	}
@@ -188,6 +205,118 @@ func (c *Client) Authenticate() error {
 
 	case <-ctx.Done():
 		return fmt.Errorf("authentication timeout")
+	}
+}
+
+func (c *Client) CheckMessages() error {
+	if !c.authenticated {
+		return fmt.Errorf("not authenticated")
+	}
+
+	c.logger.Info("Checking for messages...")
+
+	packet := udp.NewListMessagesPacket(c.userID)
+	if err := c.sendPacket(packet); err != nil {
+		return fmt.Errorf("failed to send list request: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(c.ctx, 5*time.Second)
+	defer cancel()
+
+	select {
+	case listPacket := <-c.listChan:
+		messages, err := udp.ParseMessageList(listPacket.Payload)
+		if err != nil {
+			return fmt.Errorf("failed to parse message list: %w", err)
+		}
+
+		if len(messages) == 0 {
+			fmt.Println("\n No unread messages")
+		} else {
+			fmt.Printf("\n You have %d unread message(s):\n", len(messages))
+			fmt.Println(strings.Repeat("=", 70))
+			for i, msg := range messages {
+				fmt.Printf("%d. From: %s (%s)\n", i+1, msg.SenderName, msg.SenderID)
+				fmt.Printf("   Size: %d bytes | Format: %s | Status: %s\n",
+					msg.FileSize, msg.AudioFormat, msg.Status)
+				fmt.Printf("   Received: %s\n", msg.CreatedAt)
+				fmt.Printf("   Message ID: %s\n", msg.ID)
+				fmt.Println(strings.Repeat("-", 70))
+			}
+			fmt.Println("Use 'download <message_id>' to download a message")
+		}
+		return nil
+
+	case <-ctx.Done():
+		return fmt.Errorf("timeout waiting for message list")
+	}
+}
+
+func (c *Client) DownloadMessage(messageID uuid.UUID, outputPath string) error {
+	c.logger.Info("Requesting message download", "message_id", messageID)
+
+	// Initialize chunk tracking
+	c.downloadChunks[messageID] = make(map[uint32][]byte)
+	c.downloadTotal[messageID] = 0
+
+	packet := udp.NewDownloadMessagePacket(c.userID, messageID)
+	if err := c.sendPacket(packet); err != nil {
+		return fmt.Errorf("failed to send download request: %w", err)
+	}
+
+	// Wait for chunks
+	timeout := time.After(30 * time.Second)
+	var totalChunks uint32
+
+	for {
+		select {
+		case dataPacket := <-c.dataChan:
+			if dataPacket.MessageID != messageID {
+				continue
+			}
+
+			totalChunks = dataPacket.TotalChunks
+			c.downloadChunks[messageID][dataPacket.ChunkIndex] = dataPacket.Payload
+
+			fmt.Printf("\rDownloading... %d/%d chunks",
+				len(c.downloadChunks[messageID]), totalChunks)
+
+			// Check if we have all chunks
+			if uint32(len(c.downloadChunks[messageID])) == totalChunks {
+				fmt.Println("\n✓ All chunks received, assembling file...")
+
+				// Assemble file
+				var assembled []byte
+				for i := uint32(0); i < totalChunks; i++ {
+					chunk, ok := c.downloadChunks[messageID][i]
+					if !ok {
+						return fmt.Errorf("missing chunk %d", i)
+					}
+					assembled = append(assembled, chunk...)
+				}
+
+				// Save to file
+				if err := os.WriteFile(outputPath, assembled, 0o644); err != nil {
+					return fmt.Errorf("failed to save file: %w", err)
+				}
+
+				// Clean up
+				delete(c.downloadChunks, messageID)
+				delete(c.downloadTotal, messageID)
+
+				c.logger.Info("Message downloaded successfully",
+					"path", outputPath,
+					"size", len(assembled),
+				)
+				fmt.Printf("✓ Message saved to: %s (%d bytes)\n", outputPath, len(assembled))
+				return nil
+			}
+
+		case <-timeout:
+			delete(c.downloadChunks, messageID)
+			delete(c.downloadTotal, messageID)
+			return fmt.Errorf("download timeout")
+		}
 	}
 }
 
@@ -300,16 +429,17 @@ func (c *Client) SendVoiceMessage(recipientID uuid.UUID, filePath string) error 
 func (c *Client) InteractiveMode() {
 	reader := bufio.NewReader(os.Stdin)
 
-	// Ui
-	fmt.Println("\n=== UDP Voice Chat Client ===")
+	fmt.Println("\n---- UDP govorilka -----")
 	fmt.Println("Commands:")
-	fmt.Println("  		send <recipient_id> <file_path>  - Send a voice message")
-	fmt.Println("  		heartbeat                        - Send heartbeat to server")
-	fmt.Println("  		quit                             - Exit the client")
+	fmt.Println("send <recipient_id> <file_path>      - Send a voice message")
+	fmt.Println("check                                - Check for new messages")
+	fmt.Println("download <message_id> [output_path]  - Download a message")
+	fmt.Println("heartbeat                            - Send heartbeat to server")
+	fmt.Println("quit                                 - Exit the client")
 	fmt.Println()
 
 	for {
-		fmt.Print("> ")
+		fmt.Print(">_ ")
 		input, err := reader.ReadString('\n')
 		if err != nil {
 			c.logger.Error("Error reading input", "error", err)
@@ -344,20 +474,56 @@ func (c *Client) InteractiveMode() {
 				fmt.Println("Error sending message:", err)
 			}
 
+		case "check":
+			if err := c.CheckMessages(); err != nil {
+				fmt.Println("Error checking messages:", err)
+			}
+
+		case "download":
+			if len(parts) < 2 {
+				fmt.Println("Usage: download <message_id> [output_path]")
+				continue
+			}
+
+			messageID, err := uuid.Parse(parts[1])
+			if err != nil {
+				fmt.Println("Invalid message ID:", err)
+				continue
+			}
+
+			outputPath := fmt.Sprintf("message_%s.opus", messageID.String()[:8])
+			if len(parts) >= 3 {
+				outputPath = parts[2]
+			}
+
+			// Ensure directory exists
+			dir := filepath.Dir(outputPath)
+			if dir != "." && dir != "" {
+				if err := os.MkdirAll(dir, 0o755); err != nil {
+					fmt.Println("Error creating directory:", err)
+					continue
+				}
+			}
+
+			if err := c.DownloadMessage(messageID, outputPath); err != nil {
+				fmt.Println("Error downloading message:", err)
+			}
+
 		case "heartbeat":
 			packet := udp.NewPacket(udp.PacketTypeHeartbeat, c.userID, uuid.Nil, uuid.New())
 			if err := c.sendPacket(packet); err != nil {
 				fmt.Println("Error sending heartbeat:", err)
 			} else {
-				fmt.Println("heartbeat sent")
+				fmt.Println("Heartbeat sent")
 			}
 
 		case "quit", "exit":
-			fmt.Println("Poka!")
+			fmt.Println("Goodbye!")
 			return
 
 		default:
 			fmt.Println("Unknown command:", command)
+			fmt.Println("Type 'help' for available commands")
 		}
 	}
 }

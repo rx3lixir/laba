@@ -14,8 +14,8 @@ auth_db_params:
   db_username: laba_admin
   db_password: 12345
 udp_params:
-  address: localhost  # Fixed!
-  port: 9090
+  udp_server_address: localhost
+  udp_server_port: 9090
 s3_params:
   endpoint: localhost:9000
   access_key_id: laba_admin

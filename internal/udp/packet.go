@@ -3,6 +3,7 @@ package udp
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"hash/crc32"
 
@@ -10,18 +11,33 @@ import (
 )
 
 const (
-	PacketTypeAuth      = 0x01
-	PacketTypeAuthAck   = 0x02
-	PacketTypeVoiceData = 0x03
-	PacketTypeAck       = 0x04
-	PacketTypeHeartbeat = 0x05
-	PacketTypeError     = 0xFF
+	PacketTypeAuth         = 0x01
+	PacketTypeAuthAck      = 0x02
+	PacketTypeVoiceData    = 0x03
+	PacketTypeAck          = 0x04
+	PacketTypeHeartbeat    = 0x05
+	PacketTypeListMessages = 0x06 // NEW: Request list of messages
+	PacketTypeMessageList  = 0x07 // NEW: Response with message list
+	PacketTypeDownloadMsg  = 0x08 // NEW: Request to download a message
+	PacketTypeError        = 0xFF
 )
 
 const (
 	ProtocolVersion = 0x01
 	MaxPayloadSize  = 1400
 )
+
+// MessageInfo represents metadata about a voice message
+type MessageInfo struct {
+	ID          uuid.UUID `json:"id"`
+	SenderID    uuid.UUID `json:"sender_id"`
+	SenderName  string    `json:"sender_name"`
+	FileSize    int       `json:"file_size"`
+	Duration    *int      `json:"duration,omitempty"`
+	AudioFormat string    `json:"audio_format"`
+	Status      string    `json:"status"`
+	CreatedAt   string    `json:"created_at"`
+}
 
 // Packet represents a UDP packet
 type Packet struct {
@@ -157,16 +173,20 @@ func Unmarshal(data []byte) (*Packet, error) {
 		return nil, err
 	}
 
-	// Read payload
-	p.Payload = make([]byte, p.PayloadLen)
-	if _, err := buf.Read(p.Payload); err != nil {
-		return nil, err
-	}
+	// Read payload (only if there is one)
+	if p.PayloadLen > 0 {
+		p.Payload = make([]byte, p.PayloadLen)
+		if _, err := buf.Read(p.Payload); err != nil {
+			return nil, err
+		}
 
-	// Verify checksum
-	calculatedChecksum := crc32.ChecksumIEEE(p.Payload)
-	if calculatedChecksum != p.Checksum {
-		return nil, fmt.Errorf("checksum mismatch: expected %d, got %d", p.Checksum, calculatedChecksum)
+		// Verify checksum
+		calculatedChecksum := crc32.ChecksumIEEE(p.Payload)
+		if calculatedChecksum != p.Checksum {
+			return nil, fmt.Errorf("checksum mismatch: expected %d, got %d", p.Checksum, calculatedChecksum)
+		}
+	} else {
+		p.Payload = []byte{}
 	}
 
 	return p, nil
@@ -190,7 +210,7 @@ func NewAuthPacket(userID uuid.UUID, jwtToken string) *Packet {
 	return p
 }
 
-// NewAckPacket creates and acknowledgment packet
+// NewAckPacket creates an acknowledgment packet
 func NewAckPacket(originalPacket *Packet) *Packet {
 	p := NewPacket(PacketTypeAck, originalPacket.RecipientID, originalPacket.SenderID, originalPacket.MessageID)
 	p.ChunkIndex = originalPacket.ChunkIndex
@@ -205,4 +225,37 @@ func NewVoiceDataPacket(senderID, recipientID, messageID uuid.UUID, chunkIndex, 
 	p.TotalChunks = totalChunks
 	p.Payload = data
 	return p
+}
+
+// NewListMessagesPacket creates a packet requesting message list
+func NewListMessagesPacket(userID uuid.UUID) *Packet {
+	return NewPacket(PacketTypeListMessages, userID, uuid.Nil, uuid.New())
+}
+
+// NewMessageListPacket creates a packet with message list response
+func NewMessageListPacket(recipientID uuid.UUID, messages []MessageInfo) (*Packet, error) {
+	data, err := json.Marshal(messages)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal messages: %w", err)
+	}
+
+	p := NewPacket(PacketTypeMessageList, uuid.Nil, recipientID, uuid.New())
+	p.Payload = data
+	return p, nil
+}
+
+// NewDownloadMessagePacket creates a packet requesting message download
+func NewDownloadMessagePacket(userID, messageID uuid.UUID) *Packet {
+	p := NewPacket(PacketTypeDownloadMsg, userID, uuid.Nil, messageID)
+	p.Payload = []byte("download") // Need payload to avoid EOF
+	return p
+}
+
+// ParseMessageList parses message list from packet payload
+func ParseMessageList(payload []byte) ([]MessageInfo, error) {
+	var messages []MessageInfo
+	if err := json.Unmarshal(payload, &messages); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal messages: %w", err)
+	}
+	return messages, nil
 }
